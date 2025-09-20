@@ -2,9 +2,9 @@ import { assign, createActor, raise, setup } from "xstate";
 import { speechstate } from "speechstate";
 import type { Settings } from "speechstate";
 
-import type { DMEvents, DMContext } from "./types";
+import type { DMEvents, DMContext, Message } from "./types";
 
-import { KEY } from "./azure";
+import { KEY } from "./azure.ts";
 
 const azureCredentials = {
   endpoint:
@@ -37,6 +37,7 @@ const dmMachine = setup({
     spstRef: spawn(speechstate, { input: settings }),
     informationState: { latestMove: "ping" },
     lastResult: "",
+    messages: [],
   }),
   initial: "Prepare",
   states: {
