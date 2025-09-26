@@ -1,0 +1,26 @@
+# Report Lab 2
+
+## Part 1: Chit-chat with SpeechState
+
+The first part I achieved by following the tutorial alongside it, so that I would have examples of how to create actors and invoke them. The statechart was useful to understand which states I needed and how they connected, though I adapted it slightly by having the system first go to the ChatCompletion state before it speaks its first utterance, as I wanted a newly-generated greeting. 
+
+## Part 2: Exploration – Option 1
+
+### Handling ASR_NOINPUT
+To handle a situation where the user does not say anything, or at least the microphone picks up no input, I decided to add a pre-written message to the list of messages with an assign(), to prompt the LLM to inquire about the user’s answer or microphone. I chose th message: 
+#+begin_src javascript
+{role: "assistant", 
+content: "The user did not answer. Ask if they were silent or if their microphone is working."}
+#+end_src
+I tested out the “system” or “assistant” roles, and found that using the former often lead to empty generation from the LLM, while the latter worked efficiently. I also chose to use the “assistant” role for the original prompt.
+
+### Exploring different models
+I switched to Gemma2, as its answers seemed more varied and interesting. This may, however, be due to the modifications I made in the options.
+
+### Exploring options
+I played around with both the temperatures and the number of tokens.
+I wanted to increase the temperature to obtain more creative output, but I found instead that a higher temperature often lead to the LLM generating long utterances, in different paragraphs, that sounded like both user and AI agent talking, or having a question/answer interaction. Here is one example: 
+"Hello! How are you doing today\n\nI'm doing great, thanks for asking. Just another"
+In the example above, we also see that the last sentence is cut off.
+I also decided to decrease the maximum number of tokens predicted, so as to avoid long waiting times for the user. 
+
