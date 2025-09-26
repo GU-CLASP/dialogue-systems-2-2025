@@ -39,6 +39,10 @@ const dmMachine = setup({
         model: "llama3.1",
         stream: false,
         messages: input,
+        options: {
+          temperature: 0.9,
+          num_predict: 20,
+        }
       };
       return fetch("http://localhost:11434/api/chat", {
         method: "POST",
@@ -118,7 +122,7 @@ const dmMachine = setup({
                   actions: assign(({ event, context }) => ({
                     messages: [{
                       role: "assistant", 
-                      content: "I couldn't hear you. Is your microphone is working?"},
+                      content: "The user did not answer. Ask if they were silent or if their microphone is working."},
                       ...context.messages, 
                       ]
                   })),
