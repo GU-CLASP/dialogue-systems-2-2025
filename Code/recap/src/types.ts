@@ -6,7 +6,9 @@ export interface DMContext {
   lastResult: string;
   // nextUtterance: string;
   informationState: { latestMove: string };
+  ollamaModels?: string[];
   messages: Message[];
+
 }
 
 export type DMEvents =

@@ -1,4 +1,4 @@
-import { assign, createActor, raise, setup } from "xstate";
+import { assign, createActor, fromPromise, raise, setup } from "xstate";
 import { speechstate } from "speechstate";
 import type { Settings } from "speechstate";
 
@@ -31,6 +31,22 @@ const dmMachine = setup({
     sst_prepare: ({ context }) => context.spstRef.send({ type: "PREPARE" }),
     sst_listen: ({ context }) => context.spstRef.send({ type: "LISTEN" }),
   },
+  actors: {
+    getModels: fromPromise<any, null> (() =>
+      fetch("http://localhost:11434/api/tags").then((response) => response.json())),
+    getModelReply : fromPromise<any, Message[]> (({input}) => {
+      const body = {
+        model: "llama3.1",
+        stream: false,
+        messages: input,
+      };
+      return fetch("http://localhost:11434/api/chat", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }).then((response) => response.json());
+    }
+    ) 
+  }
 }).createMachine({
   id: "DM",
   context: ({ spawn }) => ({
@@ -38,16 +54,97 @@ const dmMachine = setup({
     informationState: { latestMove: "ping" },
     lastResult: "",
     messages: [],
+    ollamaModels: []
   }),
   initial: "Prepare",
   states: {
     Prepare: {
       entry: "sst_prepare",
       on: {
-        ASRTTS_READY: "Main",
+        ASRTTS_READY: "GetModels",
       },
     },
-    Main: {
+    GetModels: {
+          invoke:{
+            src: "getModels",
+            input: null,
+            onDone: {target: "Loop",
+              actions: assign(({event}) => {
+                return {
+                  ollamaModels: event.output.models.map((x: any) => x.name)
+                }
+              })
+            }
+          }
+        },
+    Loop: {
+      initial: "Idle",
+      states: {
+        Idle: {
+          entry: assign(({context}) => {
+            return {
+              messages: [{
+                role: "assistant", 
+                content: "Provide brief chat-like answers. Start with a greeting."}, 
+                ...context.messages, ]
+            }
+          }),
+          always: { target: "ChatCompletion"}
+        },
+        Speaking: {
+          entry: ({ context }) =>
+                context.spstRef.send({
+                  type: "SPEAK",
+                  value: { utterance: context.messages[0].content },
+                }),
+          on: {SPEAK_COMPLETE: "Ask"}
+        },
+        Ask: {
+          entry: "sst_listen",
+          on: {
+                LISTEN_COMPLETE: {
+                  target: "ChatCompletion",
+                },
+                RECOGNISED: {
+                  actions: assign(({ event, context }) => ({
+                    messages: [{
+                      role: "user", 
+                      content: event.value[0].utterance}, 
+                      ...context.messages, 
+                      ],
+                  })),
+                },
+                ASR_NOINPUT: {
+                  actions: assign(({ event, context }) => ({
+                    messages: [{
+                      role: "assistant", 
+                      content: "I couldn't hear you. Is your microphone is working?"},
+                      ...context.messages, 
+                      ]
+                  })),
+                },
+              },
+        },
+        ChatCompletion: {
+          invoke:{
+            src: "getModelReply",
+            input: (context) => context.context.messages,
+            onDone: {target: "Speaking",
+              actions: assign(({event, context}) => {
+                return {
+                  messages: [
+                    { role: "system",
+                      content: event.output.message.content}, 
+                    ...context.messages]
+                }
+              })
+            }
+          }
+
+        }
+      }
+    }
+    /* Main: {
       type: "parallel",
       states: {
         Interpret: {
@@ -119,7 +216,7 @@ const dmMachine = setup({
           },
         },
       },
-    },
+    }, */
   },
 });
 
