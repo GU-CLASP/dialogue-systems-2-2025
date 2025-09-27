@@ -1,4 +1,4 @@
-import { assign, createActor, raise, setup } from "xstate";
+import { assign, createActor, raise, setup, fromPromise } from "xstate";
 import { speechstate } from "speechstate";
 import type { Settings } from "speechstate";
 
@@ -31,6 +31,30 @@ const dmMachine = setup({
     sst_prepare: ({ context }) => context.spstRef.send({ type: "PREPARE" }),
     sst_listen: ({ context }) => context.spstRef.send({ type: "LISTEN" }),
   },
+  actors: {
+    getModels: fromPromise<any, null>( () =>
+      fetch("http://localhost:11434/api/tags").then((response) => response.json()
+      ),
+    ),
+    getGreeting: fromPromise<any, string>( (input) => 
+      { 
+        const body = {
+          model: "llama3.1",
+          stream: false,
+          messages: [
+            {
+              role: "user",
+              content: input.input,
+            },
+          ],
+        };
+        return fetch("http://localhost:11434/api/chat", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }).then(response => response.json());
+    }
+    )
+  },
 }).createMachine({
   id: "DM",
   context: ({ spawn }) => ({
@@ -43,8 +67,49 @@ const dmMachine = setup({
     Prepare: {
       entry: "sst_prepare",
       on: {
-        ASRTTS_READY: "Main",
+        ASRTTS_READY: "GetGreeting",
       },
+    },
+    GetModels: {
+      invoke: {
+        src: "getModels",
+        input: null,
+        onDone: {
+          target: "Prompt",
+          actions: assign(({event}) => {
+            return { ollamaModels: event.output.models.map((x: any) => x.name) }
+          }
+          ),
+        },
+      },
+    },
+    Prompt: {
+      entry: ({ context}) =>
+                context.spstRef.send({
+                  type: "SPEAK",
+                  value: { utterance: `Hello! The models are ${context.ollamaModels?.join(", ")}` },
+                }),
+      on: { SPEAK_COMPLETE: "Main" },
+    },
+    GetGreeting: {
+      invoke: {
+        src: "getGreeting",
+        input: "Say some very short greeting to start the conversation!",
+        onDone: {
+          target: "Greeting",
+          actions: assign(({ event }) => {
+            return { message: event.output.message.content };
+          },),
+        },
+      },
+    },
+    Greeting: {
+      entry: ({ context}) =>
+                context.spstRef.send({
+                  type: "SPEAK",
+                  value: { utterance: context.message },
+                }),
+      on: { SPEAK_COMPLETE: "Main" },
     },
     Main: {
       type: "parallel",
