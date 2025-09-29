@@ -2,7 +2,7 @@ import { assign, createActor, raise, setup, fromPromise } from "xstate";
 import { speechstate } from "speechstate";
 import type { Settings } from "speechstate";
 
-import type { DMEvents, DMContext } from "./types";
+import type { DMEvents, DMContext, Message } from "./types";
 
 import { KEY } from "./azure";
 
@@ -53,6 +53,19 @@ const dmMachine = setup({
         body: JSON.stringify(body),
       }).then(response => response.json());
     }
+    ),
+    getChatCompletion: fromPromise<any, Message[]>( (input) =>
+      { 
+        const body = {
+          model: "llama3.1",
+          stream: false,
+          messages: input.input,
+        };
+        return fetch("http://localhost:11434/api/chat", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }).then(response => response.json());
+    }
     )
   },
 }).createMachine({
@@ -61,6 +74,10 @@ const dmMachine = setup({
     spstRef: spawn(speechstate, { input: settings }),
     informationState: { latestMove: "ping" },
     lastResult: "",
+    messages: [
+      { role: "system", content: "You are a helpful assistant. Provide very brief chat-like responses!"},
+      { role: "user", content: "Say some very short greeting to start the conversation!"}
+    ]
   }),
   initial: "Prepare",
   states: {
@@ -93,13 +110,16 @@ const dmMachine = setup({
     },
     GetGreeting: {
       invoke: {
-        src: "getGreeting",
-        input: "Say some very short greeting to start the conversation!",
+        src: "getChatCompletion",
+        input: ({ context }) => context.messages,
         onDone: {
-          target: "Greeting",
-          actions: assign(({ event }) => {
-            return { message: event.output.message.content };
-          },),
+          target: "Loop",
+          actions: assign ({
+                messages: ({ event, context }) => [
+                ...context.messages,
+                {role: "assistant", content: event.output.message.content}
+                ],
+              }),
         },
       },
     },
@@ -110,6 +130,62 @@ const dmMachine = setup({
                   value: { utterance: context.message },
                 }),
       on: { SPEAK_COMPLETE: "Main" },
+    },
+    GetChatCompletion: {
+      invoke: {
+        src: "getChatCompletion",
+        input: ({ context }) => context.messages,
+        onDone: {
+          //target: "Greeting",
+          actions: ({ event }) => 
+            console.log(event.output)
+          
+        },
+      },
+    },
+    Loop: {
+      initial: "Speaking",
+      states: {
+        Speaking: {
+          entry: ({ context}) =>
+                context.spstRef.send({
+                  type: "SPEAK",
+                  value: { utterance: context.messages[context.messages.length -1].content},
+                }),
+          on: { SPEAK_COMPLETE: "Asking" },
+        },
+        Asking: {
+          entry: "sst_listen",
+          on: {
+            LISTEN_COMPLETE: {
+              target: "ChatCompletion",
+            },
+            RECOGNISED: {
+              actions: assign ({
+                messages: ({ event, context }) => [
+                ...context.messages,
+                {role: "user", content: event.value[0].utterance}
+                ],
+              }),
+            },
+          },
+        },
+        ChatCompletion: {
+          invoke: {
+            src: "getChatCompletion",
+            input: ({ context }) => context.messages,
+            onDone: {
+              target: "Speaking",
+              actions: assign ({
+                messages: ({ event, context }) => [
+                ...context.messages,
+                {role: "assistant", content: event.output.message.content}
+                ],
+              }),
+            },
+          },
+        }
+      }
     },
     Main: {
       type: "parallel",
