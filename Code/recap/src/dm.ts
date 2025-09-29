@@ -28,8 +28,14 @@ const dmMachine = setup({
     events: {} as DMEvents,
   },
   actions: {
-    sst_prepare: ({ context }) => context.spstRef.send({ type: "PREPARE" }),
-    sst_listen: ({ context }) => context.spstRef.send({ type: "LISTEN" }),
+    sst_prepare: ({ context }) => {
+      console.log("sending prepare to speechstate");
+      context.spstRef.send({ type: "PREPARE" });
+    },
+    sst_listen: ({ context }) => {
+      console.log("sending listen to speechstate");
+      context.spstRef.send({ type: "LISTEN" });
+    },
   },
   actors: {
     getModels: fromPromise<any, null>(() =>
@@ -75,19 +81,23 @@ const dmMachine = setup({
       states: {
         Idle: {
           entry: assign(({ context }) => ({
-            messages: [{
-              role: "assistant",
-              content: "Provide brief chat-like answers. Start with a greeting."
-            }, ...context.messages]
+            messages: [
+              { role: "assistant", content: "You are a helpful assistant. Provide brief chat-like answers. Start with a greeting."},
+              { role: "user", content: "Say hello to start a conversation." },
+              ...context.messages
+            ]
           })),
           always: { target: "ChatCompletion" }
         },
         Speaking: {
-          entry: ({ context }) =>
+          entry: ({ context }) => {
+            const utterance = context.messages[0].content;
+            console.log("speak:", utterance);
             context.spstRef.send({
               type: "SPEAK",
-              value: { utterance: context.messages[0].content }
-            }),
+              value: { utterance },
+            });
+          },
           on: { SPEAK_COMPLETE: "Ask" }
         },
         Ask: {
@@ -96,6 +106,7 @@ const dmMachine = setup({
             RECOGNISED: {
               actions: assign(({ context, event }) => {
                 const utterance = event.value?.[0]?.utterance ?? "";
+                console.log("asr recognised:", utterance );
                 return {
                   messages: [
                     { role: "user", content: utterance },
@@ -106,16 +117,17 @@ const dmMachine = setup({
               target: "ChatCompletion",
             },
             ASR_NOINPUT: {
-              actions: assign(({ context }) => ({
-                messages: [{
-                  role: "assistant",
-                  content: "I couldn't hear you."
-                }, 
-                ...context.messages
-              ],
-              }))
-            }
-          }
+              actions: assign(({ context }) => {
+                console.log("ASR noinput");
+                return {
+                  messages: [
+                    { role: "assistant", content: "I couldn't hear you." }, 
+                    ...context.messages,
+                  ],
+                };
+              }),
+            },
+          },
         },
         ChatCompletion: {
           invoke: {
@@ -123,18 +135,22 @@ const dmMachine = setup({
             input: (context) => context.context.messages,
             onDone: {
               target: "Speaking",
-              actions: assign(({ event, context }) => ({
-                messages: [
-                  { role: "assistant", content: event.output.message.content },
-                  ...context.messages
-                ]
-              }))
-            }
-          }
-        }
-      }
-    }
-  }
+              actions: assign(({ event, context }) => {
+                const reply = event.output.message?.content?.trim();
+                console.log("LLM reply:", reply);
+                return {
+                  messages: [
+                    { role: "assistant", content: reply && reply.length > 0 ? reply : "Hello! How are you today?" },
+                    ...context.messages
+                  ],
+                };
+              }),
+            },
+          },
+        },
+      },
+    },
+  },
 });
 //     Main: {
 //       type: "parallel",
@@ -214,11 +230,22 @@ const dmMachine = setup({
 
 const dmActor = createActor(dmMachine, {}).start();
 
-dmActor.getSnapshot().context.spstRef.subscribe((snapshot) => {
+dmActor.subscribe((snapshot) => {
   console.group("State update");
-  console.log("State value:", state.value);
-  console.log("State context:", state.context);
+  console.log("State value:", snapshot.value);
+  console.log("State context:", snapshot.context);
   console.groupEnd();
+
+  if (snapshot.context.spstRef && !snapshot.context.spstRef._debugAttached) {
+    snapshot.context.spstRef._debugAttached = true;
+    snapshot.context.spstRef.subscribe((s) => {
+      console.group("speechstate update");
+      console.log("speechstate state:", s.value);
+      console.log("speechstate event:", s.event);
+      console.log("speechstate contect:", s.context);
+      console.groupEnd();
+    });
+  }
 });
 
 export function setupButton(element: HTMLButtonElement) {
