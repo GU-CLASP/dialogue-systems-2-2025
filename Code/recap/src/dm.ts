@@ -1,4 +1,4 @@
-import { assign, createActor, fromPromise, raise, setup } from "xstate";
+import { assign, createActor, fromPromise, setup } from "xstate";
 import { speechstate } from "speechstate";
 import type { Settings } from "speechstate";
 
@@ -38,11 +38,15 @@ const dmMachine = setup({
     },
   },
   actors: {
-    getModels: fromPromise<any, null>(() =>
+    Models: fromPromise<any, null>(() =>
       fetch("http://localhost:11435/api/tags").then(r => r.json())
     ),
-    getModelReply: fromPromise<any, Message[]>(({ input }) => {
-      const body = { model: "llama3.2", stream: false, messages: input };
+    ModelsReply: fromPromise<any, Message[]>(({ input }) => {
+      const body = { 
+        model: "llama3.2", 
+        stream: false,
+        messages: input 
+      };
       return fetch("http://localhost:11435/api/chat", {
         method: "POST",
         body: JSON.stringify(body),
@@ -62,11 +66,11 @@ const dmMachine = setup({
   states: {
     Prepare: {
       entry: "sst_prepare",
-      on: { ASRTTS_READY: "GetModels" },
+      on: { ASRTTS_READY: "Models" },
     },
-    GetModels: {
+    Models: {
       invoke: {
-        src: "getModels",
+        src: "Models",
         input: null,
         onDone: {
           target: "Loop",
@@ -121,7 +125,7 @@ const dmMachine = setup({
                 console.log("ASR noinput");
                 return {
                   messages: [
-                    { role: "assistant", content: "I couldn't hear you." }, 
+                    { role: "assistant", content: "I can't hear you." }, 
                     ...context.messages,
                   ],
                 };
@@ -131,7 +135,7 @@ const dmMachine = setup({
         },
         ChatCompletion: {
           invoke: {
-            src: "getModelReply",
+            src: "ModelsReply",
             input: (context) => context.context.messages,
             onDone: {
               target: "Speaking",
