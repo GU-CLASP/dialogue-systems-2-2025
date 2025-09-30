@@ -168,7 +168,16 @@ const dmMachine = setup({
                 ],
               }),
             },
-          },
+            ASR_NOINPUT: {
+              actions: assign ({
+                messages: ({ context }) => [
+                ...context.messages,
+                {role: "user", content: "Can you kindly repeat or summarize your last turn or change the topic of conversation if that seems appropriate?"}
+                //{role: "system", content: "if the user does not respond, kindly repeat or summarize your last turn or change topic to keep the conversation going. Always say something to encourage the user to respond."}
+                ],
+              }),
+            },
+          }
         },
         ChatCompletion: {
           invoke: {
