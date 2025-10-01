@@ -1,4 +1,4 @@
-import { assign, createActor, raise, setup, fromPromise } from "xstate";
+import { assign, createActor, setup, fromPromise } from "xstate";
 import { speechstate } from "speechstate";
 import type { Settings } from "speechstate";
 
@@ -30,6 +30,9 @@ const dmMachine = setup({
   actions: {
     sst_prepare: ({ context }) => context.spstRef.send({ type: "PREPARE" }),
     sst_listen: ({ context }) => context.spstRef.send({ type: "LISTEN" }),
+    sst_speak: ({ context }, params: { utterance: string }) => 
+      context.spstRef.send({type: "SPEAK", value: {utterance: params.utterance},
+      }),
   },
   actors: {
     getModels: fromPromise<any, null>( () =>
@@ -60,6 +63,8 @@ const dmMachine = setup({
           model: "llama3.1",
           stream: false,
           messages: input.input,
+          //temperature: 0,
+          //seed: 9,
         };
         return fetch("http://localhost:11434/api/chat", {
         method: "POST",
@@ -72,11 +77,10 @@ const dmMachine = setup({
   id: "DM",
   context: ({ spawn }) => ({
     spstRef: spawn(speechstate, { input: settings }),
-    informationState: { latestMove: "ping" },
-    lastResult: "",
     messages: [
       { role: "system", content: "You are a helpful assistant. Provide very brief chat-like responses!"},
       { role: "user", content: "Say some very short greeting to start the conversation!"}
+      //{ role: "user", content: "Tell me a story about a dragon and a baker"}
     ]
   }),
   initial: "Prepare",
@@ -106,7 +110,7 @@ const dmMachine = setup({
                   type: "SPEAK",
                   value: { utterance: `Hello! The models are ${context.ollamaModels?.join(", ")}` },
                 }),
-      on: { SPEAK_COMPLETE: "Main" },
+      on: { SPEAK_COMPLETE: "Loop" },
     },
     GetGreeting: {
       invoke: {
@@ -129,7 +133,7 @@ const dmMachine = setup({
                   type: "SPEAK",
                   value: { utterance: context.message },
                 }),
-      on: { SPEAK_COMPLETE: "Main" },
+      on: { SPEAK_COMPLETE: "Loop" },
     },
     GetChatCompletion: {
       invoke: {
@@ -195,79 +199,6 @@ const dmMachine = setup({
           },
         }
       }
-    },
-    Main: {
-      type: "parallel",
-      states: {
-        Interpret: {
-          initial: "Idle",
-          states: {
-            Idle: {
-              on: { SPEAK_COMPLETE: "Recognising" },
-            },
-            Recognising: {
-              entry: "sst_listen",
-              on: {
-                LISTEN_COMPLETE: {
-                  target: "Idle",
-                  actions: raise(({ context }) => ({
-                    type: "SAYS",
-                    value: context.lastResult,
-                  })),
-                },
-                RECOGNISED: {
-                  actions: assign(({ event }) => ({
-                    lastResult: event.value[0].utterance,
-                  })),
-                },
-              },
-            },
-          },
-        },
-        Generate: {
-          initial: "Idle",
-          states: {
-            Speaking: {
-              entry: ({ context, event }) =>
-                context.spstRef.send({
-                  type: "SPEAK",
-                  value: { utterance: (event as any).value },
-                }),
-              on: { SPEAK_COMPLETE: "Idle" },
-            },
-            Idle: {
-              on: { NEXT_MOVE: "Speaking" },
-            },
-          },
-        },
-        Process: {
-          initial: "Select",
-          states: {
-            Select: {
-              always: {
-                guard: ({ context }) =>
-                  context.informationState.latestMove !== "",
-                actions: raise(({ context }) => ({
-                  type: "NEXT_MOVE",
-                  value: context.informationState.latestMove,
-                })),
-                target: "Update",
-              },
-            },
-            Update: {
-              entry: assign({ informationState: { latestMove: "" } }),
-              on: {
-                SAYS: {
-                  target: "Select",
-                  actions: assign(({ event }) => ({
-                    informationState: { latestMove: event.value },
-                  })),
-                },
-              },
-            },
-          },
-        },
-      },
     },
   },
 });

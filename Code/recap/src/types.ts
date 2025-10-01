@@ -8,9 +8,6 @@ export type Message = {
 
 export interface DMContext {
   spstRef: AnyActorRef;
-  lastResult: string;
-  // nextUtterance: string;
-  informationState: { latestMove: string };
   ollamaModels?: string[];
   message?: string;
   messages: Message[];

@@ -100,4 +100,28 @@ Now, there is more variation in the way the system responds to no input. However
 
 Thus, there is still some room for improvement. A solution to explore might be using a system message to instruct the assistant to repeat without making it obvious that it's a repetition.
 
-2.
+2. Adjusting options
+
+To test the impact of temperature, I prompted the model with the exact same prompt, several times and for two temperature values. With temperature = 0 there is less variation between outputs, while with temperature = 1, there is more creativity and the turns are also longer.
+
+Prompt: *Tell me a story about a dragon and a baker*
+
+Generated outputs with temperature = 0:
+- In a quaint village, a fiery dragon named Blaze befriended a kind baker named Emma.
+- In a small village, a gentle baker named Emma lived next to a fierce dragon named Blaze. One day...
+- In a tiny village, a brave baker named Emma befriend a fiery dragon, Scorch. He'd sneak into her shop at night to trade loaves for sparkly gems.
+- In a land of sweet treats, a baker named Max lived next to a fire-breathing dragon named Scorch. One day...
+
+Generated outputs with temperature = 1:
+- Once, in a land of sweet treats, a baker named Emma made the most mouthwatering pastries. One day, a friendly dragon named Blaze flew by her bakery, craving something delicious!
+- In a tiny village, a friendly dragon named Ember befriended Baker Bob, who made the most scrumptious pastries in town. One day, Ember asked Bob to bake a cake for her birthday!
+- In a village, a baker named Bob made a special cake for a legendary dragon. The dragon, named Blaze, had a sweet tooth and a love for Bob's treats.
+- In a village nestled between two great mountains, a legendary baker named Emilia created pastries that granted wishes to those who ate them. One day, a fierce dragon named Scorch descended upon the village, breathing fire and destruction
+
+I then wanted to make the model more deterministic and set a seed, expecting to get the exact same output for a given prompt. However, even with a temperature = 0, it did not work as expected as I get two different outputs for a given prompt (same as before) (Note: the machine was re-started in-between tests to avoid messages accumulation in the history and a non-repetition due to the repeat_penalty).
+
+Generated outputs with seed = 9 and temperature = 0:
+- In a land of sweet treats, a fierce dragon named Blaze had a weakness for freshly baked bread. He'd fly over villages, sniffing out the best bakeries. One day, he landed on the doorstep of Mrs. Whiskers' bakery, where she handed him a warm loaf and said, "Now, don't burn down my shop!"
+- In the land of Sweetopia, a gentle dragon named Blaze befriended Bertha, a kind-hearted baker. She'd bake him treats with fireproof wrappers so he could enjoy her yummy pastries on his morning fly-bys!
+
+My understanding is that this non-repeatability is due to the quantization of the model, which reduces the model size and performance but may introduce some additional randomness.
